@@ -8,8 +8,8 @@ const Dashboard = () => {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Fetch user statistics when component loads
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+ 
   useEffect(() => {
     fetchUserStats();
   }, []);
@@ -25,6 +25,24 @@ const Dashboard = () => {
     }
   };
 
+  const handleDisconnectGithub = async () => {
+    try {
+      await axios.post('http://localhost:8000/api/users/disconnect-github/');
+      setShowDisconnectConfirm(false);
+      await fetchUserStats();
+    } catch (error) {
+      console.error('Failed to disconnect GitHub:', error);
+    }
+  };
+
+  const confirmDisconnect = () => {
+    setShowDisconnectConfirm(true);
+  };
+
+  const cancelDisconnect = () => {
+    setShowDisconnectConfirm(false);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -35,6 +53,33 @@ const Dashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Disconnect Confirmation Modal */}
+      {showDisconnectConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Disconnect GitHub?</h3>
+            <p className="text-gray-600 mb-6">
+              This will remove the connection between your CodeDoc AI account and GitHub.
+              You can reconnect anytime.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={cancelDisconnect}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDisconnectGithub}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">
           Welcome back, {user?.username}!
@@ -42,9 +87,19 @@ const Dashboard = () => {
         <p className="text-gray-600 mt-2">
           Manage your code documentation and repositories
         </p>
+
+        {/* Verification Status Badge */}
+        <div className="mt-3">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+            <svg className="w-4 h-4 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            Email Verified
+          </span>
+        </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Rest of your existing dashboard code... */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h3 className="text-lg font-medium text-gray-900">Connected Repositories</h3>
@@ -71,6 +126,14 @@ const Dashboard = () => {
               <span className="text-red-600">Not connected</span>
             )}
           </p>
+          {stats?.github_info?.github_username && (
+            <button
+              onClick={confirmDisconnect}
+              className="mt-4 inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Disconnect GitHub
+            </button>
+          )}
         </div>
       </div>
 
@@ -78,10 +141,10 @@ const Dashboard = () => {
       <div className="bg-white p-6 rounded-lg shadow-md">
         <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          
+
           {!stats?.github_info?.github_username && (
             <a
-              href="http://localhost:8000/accounts/github/login/"
+              href="http://localhost:8000/accounts/github/login/?process=connect"
               className="flex items-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50"
             >
               <svg className="w-8 h-8 mr-3" viewBox="0 0 20 20" fill="currentColor">

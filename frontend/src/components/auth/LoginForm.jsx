@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom'; // Add this import
+import EmailVerificationForm from './EmailVerificationForm';
 
 const LoginForm = () => {
   const [formData, setFormData] = useState({
@@ -12,7 +13,9 @@ const LoginForm = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+
   const { login } = useAuth();
   const navigate = useNavigate(); // Add this hook
 
@@ -29,25 +32,30 @@ const LoginForm = () => {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:8000/auth/login/', {
+      const response = await axios.post('http://localhost:8000/api/users/login/', {
         username: formData.username,
         password: formData.password
       });
 
-      const token = response.data.key;
-      
+      const token = response.data.token;
+
       // Login with redirect callback
       await login(token, () => {
         console.log('Login successful, redirecting to dashboard...');
         navigate('/dashboard'); // Redirect to dashboard
       });
-      
+
     } catch (error) {
       console.error('Login failed:', error);
-      
-      if (error.response?.data) {
-        const errorMsg = Object.values(error.response.data).flat().join(' ');
-        setError(errorMsg);
+      // If account requires verification, show the verification form
+      if (error.response?.status === 403 && error.response?.data?.requires_verification) {
+        setNeedsVerification(true);
+        setUserEmail(error.response.data.email || '');
+      } else if (error.response?.data) {
+        const errorMsg = typeof error.response.data === 'string'
+          ? error.response.data
+          : Object.values(error.response.data).flat().join(' ');
+        setError(errorMsg || 'Login failed. Please try again.');
       } else {
         setError('Login failed. Please try again.');
       }
@@ -56,11 +64,21 @@ const LoginForm = () => {
     }
   };
 
+  // If verification is required, render the verification form
+  if (needsVerification) {
+    return (
+      <EmailVerificationForm
+        email={userEmail}
+        onBack={() => setNeedsVerification(false)}
+      />
+    );
+  }
+
   // Rest of your component remains the same...
   return (
     <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
       <h2 className="text-2xl font-bold mb-6 text-center">Login to CodeDoc AI</h2>
-      
+
       {error && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
           {error}
@@ -77,7 +95,7 @@ const LoginForm = () => {
             name="username"
             value={formData.username}
             onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+            className="w-full px-3 text-black py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
             required
           />
         </div>
@@ -91,7 +109,7 @@ const LoginForm = () => {
             name="password"
             value={formData.password}
             onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+            className="w-full px-3 text-black py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
             required
           />
         </div>
@@ -114,7 +132,7 @@ const LoginForm = () => {
             <span className="px-2 bg-white text-gray-500">Or</span>
           </div>
         </div>
-        
+
         <a
           href="http://localhost:8000/accounts/github/login/"
           className="mt-4 w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"

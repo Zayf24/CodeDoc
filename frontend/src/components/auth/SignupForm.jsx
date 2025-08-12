@@ -1,9 +1,6 @@
-// src/components/auth/SignupForm.jsx
-
 import React, { useState } from 'react';
 import axios from 'axios';
-import { useAuth } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom'; // Add this import
+import EmailVerificationForm from './EmailVerificationForm';
 
 const SignupForm = () => {
   const [formData, setFormData] = useState({
@@ -14,9 +11,8 @@ const SignupForm = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
-  const { login } = useAuth();
-  const navigate = useNavigate(); // Add this hook
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
 
   const handleChange = (e) => {
     setFormData({
@@ -37,15 +33,18 @@ const SignupForm = () => {
     }
 
     try {
+      // Create the user account
       const response = await axios.post('http://localhost:8000/auth/registration/', formData);
       
-      const token = response.data.key;
-      
-      // Login with redirect callback
-      await login(token, () => {
-        console.log('Registration successful, redirecting to dashboard...');
-        navigate('/dashboard'); // Redirect to dashboard
+      // Send verification code
+      await axios.post('http://localhost:8000/api/users/send-verification/', {
+        email: formData.email,
+        username: formData.username
       });
+      
+      // Show verification form
+      setNeedsVerification(true);
+      setUserEmail(formData.email);
       
     } catch (error) {
       console.error('Registration failed:', error);
@@ -61,7 +60,17 @@ const SignupForm = () => {
     }
   };
 
-  // Rest of your signup form component...
+  const handleBackToSignup = () => {
+    setNeedsVerification(false);
+    setUserEmail('');
+  };
+
+  // Show email verification form if needed
+  if (needsVerification) {
+    return <EmailVerificationForm email={userEmail} onBack={handleBackToSignup} />;
+  }
+
+  // Your existing signup form JSX remains the same...
   return (
     <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
       <h2 className="text-2xl font-bold mb-6 text-center">Sign Up for CodeDoc AI</h2>
@@ -82,7 +91,7 @@ const SignupForm = () => {
             name="username"
             value={formData.username}
             onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+            className="w-full text-black px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
             required
           />
         </div>
@@ -96,7 +105,7 @@ const SignupForm = () => {
             name="email"
             value={formData.email}
             onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+            className="w-full px-3 text-black py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
             required
           />
         </div>
@@ -110,7 +119,7 @@ const SignupForm = () => {
             name="password1"
             value={formData.password1}
             onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+            className="w-full px-3 text-black py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
             required
           />
         </div>
@@ -124,7 +133,7 @@ const SignupForm = () => {
             name="password2"
             value={formData.password2}
             onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+            className="w-full px-3 text-black py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
             required
           />
         </div>

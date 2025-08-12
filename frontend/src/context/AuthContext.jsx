@@ -52,7 +52,13 @@ export const AuthProvider = ({ children }) => {
     setToken(token);
     axios.defaults.headers.common['Authorization'] = `Token ${token}`;
     await fetchUser();
-    
+    // Ensure Django session matches token user for social connect
+    try {
+      await axios.post('http://localhost:8000/api/users/sync-session/');
+    } catch (e) {
+      // non-fatal
+    }
+
     // Call the redirect callback if provided
     if (redirectCallback) {
       redirectCallback();
@@ -64,6 +70,8 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];
+    // Clear server session so next social connect is clean
+    axios.post('http://localhost:8000/api/users/logout/').catch(() => { });
   };
 
   const value = {
