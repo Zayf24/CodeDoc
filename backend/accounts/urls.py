@@ -9,6 +9,8 @@ from .views import (
     sync_session,
     api_logout,
     disconnect_github,
+    register_user,
+    sync_github_profile,
 )
 
 urlpatterns = [
@@ -18,7 +20,9 @@ urlpatterns = [
     path('send-verification/', send_verification_code, name='send-verification-code'),
     path('verify-code/', verify_email_code, name='verify-email-code'),
     path('login/', custom_login, name='custom-login'),
+    path('register/', register_user, name='register-user'),
     path('sync-session/', sync_session, name='sync-session'),
     path('logout/', api_logout, name='api-logout'),
     path('disconnect-github/', disconnect_github, name='disconnect-github'),
+    path('sync-github-profile/', sync_github_profile, name='sync-github-profile'),
 ]

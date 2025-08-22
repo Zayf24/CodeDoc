@@ -1,3 +1,4 @@
+# Custom social account adapter for GitHub OAuth integration
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from allauth.exceptions import ImmediateHttpResponse
 from django.http import HttpResponseRedirect
@@ -5,14 +6,21 @@ from django.http import HttpResponseRedirect
 
 class CodeDocSocialAccountAdapter(DefaultSocialAccountAdapter):
     def pre_social_login(self, request, sociallogin):
-        """Prevent switching to another user via social login when a user is already authenticated.
-
-        If a logged-in user attempts to connect a GitHub account that is already
-        linked to a different user, block the operation and redirect with an error.
+        """
+        Prevent account switching via social login for security.
+        
+        This method implements security measures to prevent:
+        1. Authenticated users from connecting GitHub accounts owned by others
+        2. Potential account hijacking through social login
+        3. Confusion between multiple user accounts
+        
+        If a logged-in user tries to connect a GitHub account that's already
+        linked to a different user, the operation is blocked and user is
+        redirected with an error message.
         """
         if request.user.is_authenticated:
             if sociallogin.is_existing:
-                # Social account already exists and belongs to someone else
+                # Check if the social account belongs to a different user
                 if sociallogin.account.user != request.user:
                     raise ImmediateHttpResponse(
                         HttpResponseRedirect("http://localhost:5173/dashboard?error=github_account_in_use")

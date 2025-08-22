@@ -1,4 +1,5 @@
 
+# User authentication and profile management views
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
@@ -48,14 +49,20 @@ def user_stats(request):
     except SocialAccount.DoesNotExist:
         pass
     
+    # Get actual repository and job counts
+    from repositories.models import Repository, DocumentationJob
+    
+    total_repositories = Repository.objects.filter(user=user).count()
+    total_jobs = DocumentationJob.objects.filter(user=user).count()
+    
     return Response({
         'user_id': user.id,
         'username': user.username,
         'email': user.email,
         'date_joined': user.date_joined,
         'github_info': github_info,
-        'total_repositories': 0,  # We'll implement this later
-        'total_jobs': 0,  # We'll implement this later
+        'total_repositories': total_repositories,
+        'total_jobs': total_jobs,
     })
 
 @api_view(['GET'])
@@ -66,7 +73,8 @@ def github_oauth_callback(request):
     if request.user.is_authenticated:
         # Create or get auth token for the user
         token, created = Token.objects.get_or_create(user=request.user)
-        
+        print(f'token : - {token}')
+        print(f'key : -{token.key}')
         # Redirect to React with the token
         react_callback_url = f"http://localhost:5173/auth/callback?token={token.key}"
         return HttpResponseRedirect(react_callback_url)
@@ -79,7 +87,16 @@ def github_oauth_callback(request):
 def custom_login(request):
     """
     Custom login that checks email verification status.
-    Accepts either username or email as the identifier.
+    
+    This endpoint implements flexible authentication with verification:
+    1. Accepts username or email as identifier for user convenience
+    2. Attempts authentication with username first, then email fallback
+    3. Checks email verification status before allowing login
+    4. Automatically sends verification codes for unverified accounts
+    5. Returns appropriate response based on verification status
+    
+    The dual-identifier approach improves user experience while
+    maintaining security through email verification.
     """
     identifier = request.data.get('username')
     password = request.data.get('password')
@@ -89,10 +106,10 @@ def custom_login(request):
             'error': 'Username/email and password are required'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Try default authentication assuming identifier is a username
+    # Primary authentication attempt using identifier as username
     user = authenticate(username=identifier, password=password)
     
-    # If that fails, try treating identifier as an email
+    # Fallback authentication using identifier as email
     if user is None:
         try:
             matched_user = User.objects.get(email__iexact=identifier)
@@ -105,20 +122,20 @@ def custom_login(request):
             'error': 'Invalid credentials'
         }, status=status.HTTP_401_UNAUTHORIZED)
     
-    # Check if user is verified
+    # Verify user account status before allowing login
     if not is_user_verified(user):
-        # Send verification code for unverified users
+        # Handle unverified users by sending verification codes
         try:
-            # Delete any existing unused codes for this user
+            # Clean up any existing unused codes to prevent confusion
             EmailVerificationCode.objects.filter(user=user, is_used=False).delete()
             
-            # Create new verification code
+            # Generate new verification code with 15-minute expiration
             verification_code = EmailVerificationCode.objects.create(
                 user=user,
                 email=user.email
             )
             
-            # Send verification email
+            # Send verification email with the code
             send_verification_email(user, verification_code.code)
             
             return Response({
@@ -132,7 +149,7 @@ def custom_login(request):
                 'error': 'Failed to send verification code'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    # User is verified, proceed with normal login
+    # User is verified, proceed with normal login and token generation
     token, created = Token.objects.get_or_create(user=user)
     
     return Response({
@@ -147,7 +164,16 @@ def custom_login(request):
 
 def is_user_verified(user):
     """
-    Check if user is verified through email or social account
+    Check if user is verified through email or social account.
+    
+    This function implements a dual-verification strategy:
+    1. Checks for verified email addresses in the EmailAddress model
+    2. Checks for social account connections (GitHub OAuth)
+    3. Auto-verifies social account users for seamless experience
+    4. Creates verified email records for social account users
+    
+    Social account users are automatically verified because they've
+    already authenticated through a trusted third-party service.
     """
     # Check if user has verified email address
     verified_email = EmailAddress.objects.filter(user=user, verified=True).exists()
@@ -157,7 +183,7 @@ def is_user_verified(user):
     # Check if user signed up via social account (GitHub)
     social_account = SocialAccount.objects.filter(user=user).exists()
     if social_account:
-        # Auto-verify social account users
+        # Auto-verify social account users and create email records
         EmailAddress.objects.get_or_create(
             user=user,
             email=user.email,
@@ -166,6 +192,47 @@ def is_user_verified(user):
         return True
     
     return False
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def register_user(request):
+    """
+    Register a new user and send a verification code to the provided email.
+    """
+    email = request.data.get('email')
+    username = request.data.get('username')
+    password = request.data.get('password')
+
+    if not email or not username or not password:
+        return Response({'error': 'Email, username and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Basic validations
+    if User.objects.filter(username__iexact=username).exists():
+        return Response({'error': 'Username already taken'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'Email already registered'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if len(password) < 8:
+        return Response({'error': 'Password must be at least 8 characters long'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # Create user
+        user = User.objects.create_user(username=username, email=email, password=password)
+
+        # Ensure any previous codes are removed (should be none for a brand new user)
+        EmailVerificationCode.objects.filter(user=user, is_used=False).delete()
+
+        # Create and send verification code
+        verification_code = EmailVerificationCode.objects.create(user=user, email=email)
+        send_verification_email(user, verification_code.code)
+
+        return Response({
+            'message': 'Account created. Verification code sent to your email.',
+            'email': email
+        }, status=status.HTTP_201_CREATED)
+    except Exception:
+        return Response({'error': 'Registration failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
@@ -198,6 +265,7 @@ def send_verification_code(request):
         
         # Send email with code
         send_verification_email(user, verification_code.code)
+        print(verification_code)
         
         return Response({
             'message': 'Verification code sent successfully',
@@ -214,7 +282,17 @@ def send_verification_code(request):
 @permission_classes([permissions.AllowAny])
 def verify_email_code(request):
     """
-    Verify the 6-digit code and activate user account
+    Verify the 6-digit code and activate user account.
+    
+    This endpoint implements secure email verification:
+    1. Validates the verification code against the database
+    2. Checks code expiration (15-minute limit)
+    3. Marks code as used to prevent reuse
+    4. Creates or updates verified email address record
+    5. Generates authentication token for immediate login
+    
+    The verification process ensures account security while
+    providing seamless user experience after verification.
     """
     email = request.data.get('email')
     code = request.data.get('code')
@@ -223,35 +301,37 @@ def verify_email_code(request):
         return Response({'error': 'Email and code are required'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        # Find the verification code
+        # Find the verification code with validation checks
         verification_code = EmailVerificationCode.objects.get(
             email=email,
             code=code,
-            is_used=False
+            is_used=False  # Prevent reuse of verification codes
         )
         
-        # Check if code is expired
+        # Validate code hasn't expired (15-minute limit)
         if verification_code.is_expired():
             return Response({'error': 'Verification code has expired'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Mark code as used
+        # Mark code as used to prevent security issues
         verification_code.is_used = True
         verification_code.save()
         
-        # Verify the email address
+        # Get the user associated with this verification code
         user = verification_code.user
         
+        # Create or update verified email address record
         email_address, created = EmailAddress.objects.get_or_create(
             user=user,
             email=email,
             defaults={'verified': True, 'primary': True}
         )
         
+        # Update existing email address if it wasn't just created
         if not created:
             email_address.verified = True
             email_address.save()
         
-        # Generate auth token for login
+        # Generate authentication token for immediate login
         token, created = Token.objects.get_or_create(user=user)
         
         return Response({
@@ -377,3 +457,30 @@ def disconnect_github(request):
         return Response({'detail': 'GitHub disconnected'}, status=status.HTTP_200_OK)
     except Exception:
         return Response({'error': 'Failed to disconnect GitHub'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def sync_github_profile(request):
+    """Manually sync GitHub information to UserProfile for the current user"""
+    try:
+        from .utils import sync_github_profile_for_user
+        
+        success, message = sync_github_profile_for_user(request.user)
+        
+        if success:
+            return Response({
+                'message': message,
+                'success': True
+            })
+        else:
+            return Response({
+                'message': message,
+                'success': False
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({
+            'message': f'Failed to sync GitHub profile: {str(e)}',
+            'success': False
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
