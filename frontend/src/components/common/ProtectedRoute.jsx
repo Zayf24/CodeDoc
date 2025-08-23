@@ -1,11 +1,14 @@
+// src/components/common/ProtectedRoute.jsx
+
 import React from 'react';
-import { useAuth } from '../../context/AuthContext';
-import LoginForm from '../auth/LoginForm';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
-  // Show loading spinner while checking authentication
+  // Show loading while checking authentication
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -14,12 +17,12 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  // If not authenticated, show login form
+  // If not authenticated, redirect to landing page
   if (!isAuthenticated) {
-    return <LoginForm />;
+    return <Navigate to="/" replace />;
   }
 
-  // If authenticated, show the protected content
+  // If authenticated, render the protected component
   return children;
 };
 

@@ -1,3 +1,4 @@
+# Django admin configuration for user profiles
 from django.contrib import admin
 from .models import UserProfile
 
