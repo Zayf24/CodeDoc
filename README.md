@@ -55,7 +55,7 @@ Get CodeDoc up and running in 5 minutes:
 
 ```bash
 # 1. Clone and navigate
-git clone https://github.com/yourusername/CodeDoc.git
+git clone https://github.com/Zayf24/CodeDoc.git
 cd CodeDoc
 
 # 2. Backend setup
@@ -269,7 +269,7 @@ Before you begin, ensure you have the following installed:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/CodeDoc.git
+git clone https://github.com/Zayf24/CodeDoc.git
 cd CodeDoc
 ```
 
@@ -655,7 +655,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-For support, please open an issue on [GitHub Issues](https://github.com/yourusername/CodeDoc/issues).
+For support, please open an issue on [GitHub Issues](https://github.com/Zayf24/CodeDoc/issues).
 
 ---
 
