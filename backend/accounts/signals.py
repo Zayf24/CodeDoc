@@ -3,6 +3,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.apps import apps
 from .models import UserProfile
+from allauth.socialaccount.signals import socialaccount_logged_in
 
 
 @receiver(post_save, sender=UserProfile)
@@ -54,6 +55,18 @@ def sync_github_to_profile(sender, instance, **kwargs):
         # Log the error but don't crash the signal
         print(f"Error syncing GitHub info to profile for user {instance.user.username}: {e}")
 
+
+@receiver(socialaccount_logged_in)
+def handle_social_login(sender, request, sociallogin, **kwargs):
+    """
+    Handle social account login to ensure user session is properly set.
+    This signal is triggered when a user logs in via social account (GitHub).
+    """
+    user = sociallogin.user
+    if user and user.is_authenticated:
+        # Ensure the user is logged in to the Django session
+        from django.contrib.auth import login as django_login
+        django_login(request, user, backend='django.contrib.auth.backends.ModelBackend')
 
 def register_signals():
     """

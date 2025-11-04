@@ -70,22 +70,44 @@ def user_stats(request):
 def github_oauth_callback(request):
     """
     Handle successful GitHub OAuth and redirect to React with token.
-    This endpoint must allow unauthenticated access since OAuth callbacks
-    happen before the user is authenticated.
+    This endpoint is called after allauth processes the OAuth callback.
+    The user should be authenticated by the time this is called (via signal).
     """
-    # The user should be authenticated by allauth after OAuth callback
-    # We need to wait for allauth to process the OAuth response first
     from django.conf import settings
+    from allauth.socialaccount.models import SocialAccount
     
-    if request.user.is_authenticated:
+    # Try to get the authenticated user from session
+    user = request.user if request.user.is_authenticated else None
+    
+    # Fallback: If not authenticated yet, try to find the user from recent social account
+    # This can happen if the signal hasn't fired yet or there's a race condition
+    if not user:
+        try:
+            # Get the most recently created GitHub social account
+            # This should be from the current OAuth flow
+            social_account = SocialAccount.objects.filter(
+                provider='github'
+            ).select_related('user').order_by('-id').first()
+            
+            if social_account:
+                user = social_account.user
+                # Manually log the user in
+                django_login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        except Exception as e:
+            print(f"Error in github_oauth_callback: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    if user and user.is_authenticated:
         # Create or get auth token for the user
-        token, created = Token.objects.get_or_create(user=request.user)
+        token, created = Token.objects.get_or_create(user=user)
         # Redirect to React with the token
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
         react_callback_url = f"{frontend_url}/auth/callback?token={token.key}"
         return HttpResponseRedirect(react_callback_url)
     else:
-        # OAuth hasn't completed yet or failed, redirect to React login page
+        # OAuth failed or user not found
+        print("GitHub OAuth callback: User not authenticated or found")
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
         return HttpResponseRedirect(f"{frontend_url}/login?error=oauth_failed")
     
@@ -230,16 +252,43 @@ def register_user(request):
         # Ensure any previous codes are removed (should be none for a brand new user)
         EmailVerificationCode.objects.filter(user=user, is_used=False).delete()
 
-        # Create and send verification code
+        # Create verification code
         verification_code = EmailVerificationCode.objects.create(user=user, email=email)
-        send_verification_email(user, verification_code.code)
+        
+        # Try to send verification email, but don't fail registration if email fails
+        try:
+            send_verification_email(user, verification_code.code)
+            email_sent = True
+        except Exception as email_error:
+            # Log email error but don't fail registration
+            print(f"Failed to send verification email: {email_error}")
+            import traceback
+            traceback.print_exc()
+            email_sent = False
+
+        response_message = 'Account created successfully.'
+        if email_sent:
+            response_message += ' Verification code sent to your email.'
+        else:
+            response_message += ' Warning: Could not send verification email. Please contact support.'
 
         return Response({
-            'message': 'Account created. Verification code sent to your email.',
-            'email': email
+            'message': response_message,
+            'email': email,
+            'email_sent': email_sent
         }, status=status.HTTP_201_CREATED)
-    except Exception:
-        return Response({'error': 'Registration failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except Exception as e:
+        # Log the actual error for debugging
+        print(f"Registration error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return more helpful error message
+        error_message = 'Registration failed'
+        if 'UNIQUE constraint' in str(e) or 'duplicate' in str(e).lower():
+            error_message = 'Username or email already exists'
+        elif 'email' in str(e).lower():
+            error_message = 'Invalid email address'
+        return Response({'error': error_message, 'details': str(e) if settings.DEBUG else None}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
