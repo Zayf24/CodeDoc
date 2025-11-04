@@ -22,14 +22,18 @@ class CodeDocSocialAccountAdapter(DefaultSocialAccountAdapter):
             if sociallogin.is_existing:
                 # Check if the social account belongs to a different user
                 if sociallogin.account.user != request.user:
+                    from django.conf import settings
+                    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
                     raise ImmediateHttpResponse(
-                        HttpResponseRedirect("http://localhost:5173/dashboard?error=github_account_in_use")
+                        HttpResponseRedirect(f"{frontend_url}/dashboard?error=github_account_in_use")
                     )
         return super().pre_social_login(request, sociallogin)
 
     def get_connect_redirect_url(self, request, socialaccount):
         """After successfully connecting a social account, send user back to SPA dashboard."""
-        return "http://localhost:5173/dashboard?connected=github"
+        from django.conf import settings
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        return f"{frontend_url}/dashboard?connected=github"
 
     def save_user(self, request, sociallogin, form=None):
         """Override to ensure proper redirect after social account connection."""
@@ -37,9 +41,15 @@ class CodeDocSocialAccountAdapter(DefaultSocialAccountAdapter):
         return user
 
     def get_redirect_url(self, request, sociallogin):
-        """Override to force redirect to SPA after any social auth operation."""
+        """Override to force redirect to custom callback after social auth."""
+        from django.conf import settings
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        
         if request.GET.get('process') == 'connect':
-            return "http://localhost:5173/dashboard?connected=github"
-        return "http://localhost:5173/dashboard"
+            return f"{frontend_url}/dashboard?connected=github"
+        
+        # Redirect to custom callback endpoint that will generate token and redirect to frontend
+        # The user will be authenticated by this point (allauth has processed OAuth)
+        return "/api/users/github/callback/"
 
 

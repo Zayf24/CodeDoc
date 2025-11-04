@@ -66,21 +66,28 @@ def user_stats(request):
     })
 
 @api_view(['GET'])
+@permission_classes([permissions.AllowAny])
 def github_oauth_callback(request):
     """
-    Handle successful GitHub OAuth and redirect to React with token
+    Handle successful GitHub OAuth and redirect to React with token.
+    This endpoint must allow unauthenticated access since OAuth callbacks
+    happen before the user is authenticated.
     """
+    # The user should be authenticated by allauth after OAuth callback
+    # We need to wait for allauth to process the OAuth response first
+    from django.conf import settings
+    
     if request.user.is_authenticated:
         # Create or get auth token for the user
         token, created = Token.objects.get_or_create(user=request.user)
-        print(f'token : - {token}')
-        print(f'key : -{token.key}')
         # Redirect to React with the token
-        react_callback_url = f"http://localhost:5173/auth/callback?token={token.key}"
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        react_callback_url = f"{frontend_url}/auth/callback?token={token.key}"
         return HttpResponseRedirect(react_callback_url)
     else:
-        # OAuth failed, redirect to React login page
-        return HttpResponseRedirect("http://localhost:5173/login?error=oauth_failed")
+        # OAuth hasn't completed yet or failed, redirect to React login page
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        return HttpResponseRedirect(f"{frontend_url}/login?error=oauth_failed")
     
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
