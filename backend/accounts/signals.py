@@ -3,7 +3,15 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.apps import apps
 from .models import UserProfile
-from allauth.socialaccount.signals import socialaccount_logged_in
+
+# Try to import socialaccount_logged_in signal (may not exist in all allauth versions)
+try:
+    from allauth.socialaccount.signals import socialaccount_logged_in
+    HAS_SOCIAL_LOGIN_SIGNAL = True
+except ImportError:
+    # Signal doesn't exist in newer allauth versions - we handle login in views instead
+    HAS_SOCIAL_LOGIN_SIGNAL = False
+    print("Note: socialaccount_logged_in signal not available - using callback view for login")
 
 
 @receiver(post_save, sender=UserProfile)
@@ -56,17 +64,21 @@ def sync_github_to_profile(sender, instance, **kwargs):
         print(f"Error syncing GitHub info to profile for user {instance.user.username}: {e}")
 
 
-@receiver(socialaccount_logged_in)
-def handle_social_login(sender, request, sociallogin, **kwargs):
-    """
-    Handle social account login to ensure user session is properly set.
-    This signal is triggered when a user logs in via social account (GitHub).
-    """
-    user = sociallogin.user
-    if user and user.is_authenticated:
-        # Ensure the user is logged in to the Django session
-        from django.contrib.auth import login as django_login
-        django_login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+# Only register the signal handler if the signal exists
+if HAS_SOCIAL_LOGIN_SIGNAL:
+    @receiver(socialaccount_logged_in)
+    def handle_social_login(sender, request, sociallogin, **kwargs):
+        """
+        Handle social account login to ensure user session is properly set.
+        This signal is triggered when a user logs in via social account (GitHub).
+        Note: In newer allauth versions, this signal may not exist, so login
+        is handled in the callback view instead.
+        """
+        user = sociallogin.user
+        if user and user.is_authenticated:
+            # Ensure the user is logged in to the Django session
+            from django.contrib.auth import login as django_login
+            django_login(request, user, backend='django.contrib.auth.backends.ModelBackend')
 
 def register_signals():
     """
