@@ -1,15 +1,22 @@
 from pathlib import Path
 from decouple import config
+import dj_database_url
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = []
+# Parse ALLOWED_HOSTS from environment variable, strip whitespace
+ALLOWED_HOSTS_STR = config('ALLOWED_HOSTS', default='localhost,127.0.0.1')
+ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STR.split(',') if host.strip()]
+
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
 
 # Celery Configuration for asynchronous task processing
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -89,12 +96,12 @@ SOCIALACCOUNT_QUERY_EMAIL = True
 SOCIALACCOUNT_LOGIN_ON_GET = False
 SOCIALACCOUNT_STORE_TOKENS = True
 SOCIALACCOUNT_ADAPTER = 'accounts.adapters.CodeDocSocialAccountAdapter'
-SOCIALACCOUNT_LOGIN_REDIRECT_URL = 'http://localhost:5173/dashboard'
-SOCIALACCOUNT_LOGOUT_REDIRECT_URL = 'http://localhost:5173/login'
+SOCIALACCOUNT_LOGIN_REDIRECT_URL = f'{FRONTEND_URL}/dashboard'
+SOCIALACCOUNT_LOGOUT_REDIRECT_URL = f'{FRONTEND_URL}/login'
 
 # Account Authentication Settings
 LOGIN_REDIRECT_URL = '/api/users/github/callback/'
-ACCOUNT_LOGOUT_REDIRECT_URL = 'http://localhost:5173/login'
+ACCOUNT_LOGOUT_REDIRECT_URL = f'{FRONTEND_URL}/login'
 ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = None
 ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = None
 
@@ -112,6 +119,7 @@ DEFAULT_FROM_EMAIL = config('EMAIL_HOST_USER')  # Use same address for better de
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files in production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -123,9 +131,16 @@ MIDDLEWARE = [
 ]
 
 # CORS Configuration for Frontend Integration
+
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # React development server
+    FRONTEND_URL,
+    "http://localhost:5173",  # React development server (fallback)
 ]
+
+# Allow environment variable to add additional origins
+additional_origins = config('CORS_ADDITIONAL_ORIGINS', default='')
+if additional_origins:
+    CORS_ALLOWED_ORIGINS.extend([origin.strip() for origin in additional_origins.split(',')])
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -151,12 +166,19 @@ WSGI_APPLICATION = 'codedoc_main.wsgi.application'
 
 
 # Database Configuration
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Use PostgreSQL in production if DATABASE_URL is provided, otherwise use SQLite for development
+DATABASE_URL = config('DATABASE_URL', default='')
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password Validation Rules
 AUTH_PASSWORD_VALIDATORS = [
@@ -182,6 +204,10 @@ USE_TZ = True
 
 # Static Files Configuration
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # Directory where collectstatic will gather static files
+
+# WhiteNoise Configuration for static file serving
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Model Configuration
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -189,3 +215,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Additional Celery Configuration
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_CACHE_BACKEND = 'django-cache'
+
+# Security Settings for Production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True

@@ -1,0 +1,31 @@
+# Django Core
+Django==5.2.5
+djangorestframework==3.16.1
+
+# Authentication & OAuth
+django-allauth
+dj-rest-auth
+djangorestframework-simplejwt==5.5.1
+
+# Background Tasks
+celery==5.5.3
+redis==5.2.1
+django-celery-results
+
+# AI & External APIs
+google-generativeai==0.5.4
+
+# Utilities
+python-decouple==3.8
+requests==2.32.4
+django-cors-headers==4.7.0
+
+# Production Dependencies
+gunicorn==21.2.0
+whitenoise==6.7.0
+psycopg2-binary==2.9.10
+dj-database-url==2.1.0
+
+
+
+
